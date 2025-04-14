@@ -1,0 +1,412 @@
+---
+title: "Homework 1 - IND2627"
+author:
+  - name: Daniel L Santos
+# format: html
+format: pdf
+output-file: "homework1_IND2627_daniellourenco"
+output-ext:  "pdf"
+pdf-engine: pdflatex
+date: 2025/04/14
+date-format: long
+number-sections: true
+number-depth: 3
+---
+
+```{r}
+#| echo: true
+#| warning: false
+#| message: false
+#| results: hide
+
+#Necessary packages for this homework
+library(ISLR2)
+library(tidyverse)
+library(tidymodels)
+library(MASS)
+library(e1071)
+library(pROC)
+library(ggcorrplot)
+library(patchwork)
+library(boot)
+
+```
+
+# Exercise 1
+
+## Brief Exploratory Data Analysis
+
+The Boston Dataset is a dataset derived from information collected by the U.S Census Service concerning housing in the area of Boston Massachusetts. It is composed by 506 observations of 14 variables, without any missing values. These variables are:
+
+-   CRIM - per capita crime rate by town
+-   ZN - proportion of residential land zoned for lots over 25,000 sq.ft.
+-   INDUS - proportion of non-retail business acres per town.
+-   CHAS - Charles River dummy variable (1 if tract bounds river; 0 otherwise)
+-   NOX - nitric oxides concentration (parts per 10 million)
+-   RM - average number of rooms per dwelling
+-   AGE - proportion of owner-occupied units built prior to 1940
+-   DIS - weighted distances to five Boston employment centres
+-   RAD - index of accessibility to radial highways
+-   TAX - full-value property-tax rate per \$10,000
+-   PTRATIO - pupil-teacher ratio by town
+-   B - $1000(Bk - 0.63)^2$ where Bk is the proportion of blacks by town
+-   LSTAT - % lower status of the population
+-   MEDV - Median value of owner-occupied homes in \$1000's
+
+The @tbl-boston displays the first five observations from the dataset, while @tbl-summary-boston presents its descriptive statistics. Additionally, @fig-corr-matrix visualizes the correlations between variables.
+
+```{r}
+#| echo: false
+#| label: tbl-boston
+#| tbl-cap: "Boston dataset"
+knitr::kable(head(Boston,5))
+```
+
+```{r}
+#| label: tbl-summary-boston
+#| tbl-cap: Descriptive Statistics
+
+summary(Boston)
+```
+
+```{r}
+#| fig-cap-location: top
+#| fig-cap: "Correlation Matrix"
+#| label: fig-corr-matrix
+
+corr <- round(cor(Boston),1)
+ggcorrplot(corr,
+           type = "upper",
+           lab = TRUE,
+           lab_size = 2) +
+    labs(title = "Correlation Matrix")
+```
+
+Since our variables of interest are *medv*, *lstat*, and *age*, the @fig-hist below shows their distributions.
+
+```{r}
+#| fig-cap-location: top
+#| fig-cap: "Histograms of lstat, age and medv repectively"
+#| label: fig-hist
+
+p1 <- Boston |> 
+    ggplot(mapping = aes(x = lstat)) +
+    geom_histogram(bins = 50) 
+
+
+p2 <- Boston |> 
+    ggplot(mapping = aes(x = age)) +
+    geom_histogram(bins = 50) 
+
+
+p3 <- Boston |> 
+    ggplot(mapping = aes(x = medv)) +
+    geom_histogram(bins = 50) 
+
+
+p1 | p2 | p3
+```
+
+## Fitting the multiple linear regression
+
+```{r}
+# Splitting the dataset in 80% for the training and 20% for the test
+set.seed(42)
+boston.default <- initial_split(Boston, prop = 0.8)
+boston.train <- training(boston.default)
+boston.test <- testing(boston.default)
+```
+
+```{r}
+    boston_lm <- lm(medv ~ lstat + age, boston.train)
+    boston_lm
+```
+
+## Assessing the model performance
+
+As we can observe, the estimated model function $\hat{Y} = \hat{f}(X)$ is: $$
+\hat{\text medv} = -1.0080*{\text lstat} + 0.0338 *{\text age} + 32.7594.
+$$ The estimated coefficients are $\hat{\beta}_0 = 32.7594$, $\hat{\beta}_1 = -1.0080$ and $\hat{\beta}_2 = 0.0338$. Notice that the coefficient $\hat{\beta}_1$ is negative, which means that, for a fixed value of *age*, a one-unit increase in *lstat* leads to a decrease in *medv* by $1.0080$ units. On the other hand, for a fixed value of *lstat*, a one-unit increase in *age* leads to an increase in *medv* by $0.0338$ units. Finally, when both *age* and *lstat* are zero, the average value of *medv* will be $\hat{\beta}_0 = 32.7594$.
+
+The @tbl-confint shows the lower and upper bounds of 95% confidence interval for the estimated coefficients.
+
+```{r}
+#| echo: false
+#| label: tbl-confint
+#| tbl-cap: "Confidence Inteval of the Coefficients (95%)"
+knitr::kable(confint(boston_lm))
+```
+
+```{r}
+summary(boston_lm)
+```
+
+```{r}
+train.fit <- predict(boston_lm)
+mse.train <- mean((boston.train$medv - train.fit)^2)
+
+test.fit <- predict(boston_lm, newdata = boston.test)
+mse.test <- mean((boston.test$medv - test.fit)^2)
+
+r2.adj <- round(summary(boston_lm)$adj.r.squared,4)
+
+sprintf("Train MSE: %.4f", mse.train)
+sprintf("Test MSE: %.4f", mse.test)
+sprintf("Adjusted R^2: %.4f", r2.adj)
+
+
+
+```
+
+# Exercise 2
+
+```{r}
+# Loading and splitting Default dataset --------------
+set.seed(42)
+default.split <- initial_split(Default, prop = 0.8)
+
+default.train <- training(default.split)
+default.test <- testing(default.split)
+```
+
+## Fitting the models
+
+### Logistic Regression
+
+```{r}
+lr.fit <- glm(default ~ balance + income, data = default.train , 
+              family = binomial(link = "logit"))
+summary(lr.fit)
+```
+
+### LDA
+
+```{r}
+lda.fit <- lda(default ~ balance + income, data = default.train )
+lda.fit
+```
+
+### Naive Bayes
+
+```{r}
+nb.fit <- naiveBayes(default ~ balance + income, data = default.train )
+nb.fit
+```
+
+## Assessing the models performance
+
+### Logistic Regression
+
+```{r}
+lr.train.probs <- predict(lr.fit, type = "response")
+lr.test.probs <- predict(lr.fit,newdata = default.test, type = "response")
+
+lr.train.preds <- ifelse(predict(lr.fit, type = "response") > 0.5,
+                         "Yes", "No")
+lr.test.preds <- ifelse(predict(lr.fit, default.test, type = "response")>.5,
+                        "Yes", "No")
+
+```
+
+```{r}
+table(lr.train.preds, default.train$default)
+table(lr.test.preds, default.test$default)
+
+accuracy.lr.train <- mean(lr.train.preds == default.train$default)
+accuracy.lr.train
+
+accuracy.lr.test <- mean(lr.test.preds == default.test$default)
+accuracy.lr.test
+```
+
+```{r}
+#| echo: false
+#| label: fig-lr-roc
+#| fig-cap-location: top
+#| fig-cap: "ROC curve of LR model. Left: Training Set, Right: Test set"
+#| message: false
+
+par(pty = "s", mfrow = c(1,2))
+roc.lr.train <- roc(default.train$default,lr.train.probs)
+plot.roc(roc.lr.train,
+         print.auc = TRUE,
+         print.auc.cex = 0.7)
+roc.lr.test <- roc(default.test$default,lr.test.probs)
+plot.roc(roc.lr.test,
+         print.auc = TRUE,
+         print.auc.cex = 0.7)
+
+```
+
+```{r}
+auc(roc.lr.train)
+auc(roc.lr.test)
+```
+
+### LDA
+
+```{r}
+lda.train.preds <- predict(lda.fit)
+lda.test.preds <- predict(lda.fit, default.test)
+
+table(lda.train.preds$class, default.train$default)
+table(lda.test.preds$class, default.test$default)
+
+accuracy.lda.train <- mean(lda.train.preds$class == default.train$default)
+accuracy.lda.train
+
+accuracy.lda.test <- mean(lda.test.preds$class == default.test$default)
+accuracy.lda.test
+```
+
+```{r}
+#| echo: false
+#| label: fig-lda-roc
+#| fig-cap-location: top
+#| fig-cap: "ROC curve of LDA model. Left: Training Set, Right: Test set"
+#| message: false
+par(pty = "s", mfrow = c(1,2))
+roc.lda.train <- roc(default.test$default, lda.test.preds$posterior[,2])
+plot.roc(roc.lda.train,
+         print.auc = TRUE,
+         print.auc.cex = 0.7,
+         add = FALSE)
+roc.lda.test <- roc(default.test$default, lda.test.preds$posterior[,2])
+plot.roc(roc.lda.test,
+         print.auc = TRUE,
+         print.auc.cex = 0.7,
+         add = FALSE)
+```
+
+```{r}
+auc(roc.lda.train)
+auc(roc.lda.test)
+```
+
+### Naive Bayes
+
+```{r}
+nb.train.predicts <- predict(nb.fit, default.train)
+nb.test.predicts <- predict(nb.fit, default.test)
+
+table(nb.train.predicts, default.train$default)
+table(nb.test.predicts, default.test$default)
+
+accuracy.nb.train <-  mean(nb.train.predicts == default.train$default)
+accuracy.nb.test <-  mean(nb.test.predicts == default.test$default)
+
+accuracy.nb.train
+accuracy.nb.test
+
+nb.train.probs <- predict(nb.fit, default.train, type = "raw")[,"Yes"]
+nb.test.probs <- predict(nb.fit, default.test, type = "raw")[,"Yes"]
+```
+
+```{r}
+#| echo: false
+#| label: fig-NB-roc
+#| fig-cap-location: top
+#| fig-cap: "ROC curve of NB model. Left: Training Set, Right: Test set"
+#| message: false
+par(pty = "s", mfrow = c(1,2))
+roc.nb.train <- roc(default.train$default, nb.train.probs)
+plot.roc(roc.nb.train,
+         print.auc = TRUE,
+         print.auc.cex = 0.7,
+         add = FALSE)
+roc.nb.test <- roc(default.test$default, nb.test.probs)
+plot.roc(roc.nb.test,
+         print.auc = TRUE,
+         print.auc.cex = 0.7,
+         add = FALSE)
+```
+
+```{r}
+auc(roc.nb.train)
+auc(roc.nb.test)
+```
+
+### Comparative
+
+The @tbl-metrics shows the performance metrics of the models evaluated in train and test datasets. All three models (LR, LDA, NB) achieve identical test accuracy $(0.9745)$, meaning they perform equally well on unseen data. However, when we look at the AUC scores which measure how well the models distinguish between classes, we see some differences. Both LR and LDA have the same test AUC of $0.9347$, while NB performs slightly worse with $0.930$. During training, LR had the highest AUC $(0.9523)$, suggesting it may be the most capable model, though it shows a small drop in performance on the test data. LDA is the most consistent, performing exactly the same in training and testing. NB works well but shows the biggest performance drop between training and testing.
+
+In general, LR appears strongest overall, LDA is the most stable, and NB is slightly less consistent. The choice between them would depend on whether you prioritize highest potential performance (LR) or perfect consistency (LDA).
+
+|           | LR     | LDA    | NB     |
+|-----------|--------|--------|--------|
+| Train Acc | 0.9736 | 0.9723 | 0.9711 |
+| Test Acc  | 0.9745 | 0.9745 | 0.9745 |
+| Train AUC | 0.9523 | 0.9347 | 0.9504 |
+| Test AUC  | 0.9347 | 0.9347 | 0.930  |
+
+: Performance metrics of the models {#tbl-metrics}
+
+# Exercise 3
+## Brief EDA
+The dataset Insurance consist of the numbers of policyholders of an insurance company who were exposed to risk, and the numbers of car insurance claims made by those policyholders in the third quarter of 1973. It is composed by 64 observations of 5 variables withou any missing value. These variables are: 
+
+- District: Policyholder's residential district (1-4, where 4=major cities)
+- Group: Vehicle category by engine size (<1L, 1-1.5L, 1.5-2L, >2L)
+- Age: Policyholder age group (ordered: <25, 25-29, 30-35, >35 years)
+- Holders: Number of policyholders in each risk group
+- Claims: Number of automobile insurance claims filed
+
+The @tbl-insurance displays the first five observations from the dataset, and @fig-hist2 show the distributions of Claims with respect to Age and Holders.
+
+```{r}
+#| echo: false
+#| label: tbl-insurance
+#| tbl-cap: "Insurance dataset"
+knitr::kable(head(Insurance,5))
+```
+```{r}
+#| fig-cap-location: top
+#| fig-cap: "Distributions of Claims with respect to Age (left hand side) and Holders (right hand side)."
+#| label: fig-hist2
+
+
+pi1 <- ggplot(Insurance, mapping = aes(x=Age, y= Claims)) +
+    geom_boxplot(aes(fill = Age))
+
+pi2 <- ggplot(Insurance, mapping = aes(x=Holders, y= Claims)) +
+    geom_point()
+
+pi1 | pi2 
+```
+
+## Fitting Poisson Regression
+
+
+
+```{r}
+#| echo: false
+
+insurance <- Insurance
+insurance$Age <- factor(insurance$Age, ordered = FALSE)
+```
+
+```{r}
+#| warning: false
+
+set.seed(42)
+pr.fit <- glm(Claims ~ Age + Holders, data = insurance,
+              family = poisson)
+cv.err <- cv.glm(insurance, pr.fit, K=10)$delta[1]
+```
+### Assessing the model performance
+
+As we can observe, all the estimated model coefficients are positive and statistically significant, since the p-values are nearly zero.
+
+For instance, the fitted Poisson model estimates that policyholders older than 35 years have an expected claim count 3.89 times higher ($289\%$ increase) than those younger than 25 years, holding other variables constant.
+
+```{r}
+summary(pr.fit)
+```
+```{r}
+exp(pr.fit$coefficients[4])
+```
+```{r}
+cv.err
+```
+
+
