@@ -37,4 +37,5 @@ cor(Boston$lstat, Boston$age)
 dim(Boston)
 sum(is.na(Boston))
 
-
+ 
+ 
